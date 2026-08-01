@@ -1,17 +1,12 @@
 # --- data ------------------------------------------------------------------
 # The PhysioPain archive is 1.26 GB zipped / 5.36 GB extracted. Nobody wants
 # that in git. `python scripts/get_data.py` pulls it down; see data/README.md.
+#
+# NB: scoped to data/raw and data/processed rather than a bare `data/`, so that
+# data/README.md (the how-to-get-it instructions) stays tracked.
 data/raw/
 data/processed/
 *.zip
-
-# --- trained models & run outputs -------------------------------------------
-# Keep the FINAL submission model (we'll force-add it: git add -f models/final/)
-# but not the dozens of intermediate fold checkpoints.
-models/*
-!models/final/
-results/*
-!results/.gitkeep
 
 # --- python ------------------------------------------------------------------
 __pycache__/
@@ -46,3 +41,19 @@ kaggle.json
 .vscode/
 .idea/
 *.swp
+
+# --- trained models & run outputs -------------------------------------------
+# Intermediate fold checkpoints are noise; the FINAL submission model is a
+# required deliverable ("saved model with weights and biases"), so it has to be
+# committable.
+models/*
+results/*
+!results/.gitkeep
+*.h5
+*.keras
+
+# Keep this block LAST. gitignore is last-match-wins, so the un-ignore has to
+# come after *.keras / *.h5 -- otherwise models/final/best.keras matches the
+# extension rule and gets dropped despite the models/final exception above.
+!models/final/
+!models/final/**
