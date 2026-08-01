@@ -1,0 +1,48 @@
+# --- data ------------------------------------------------------------------
+# The PhysioPain archive is 1.26 GB zipped / 5.36 GB extracted. Nobody wants
+# that in git. `python scripts/get_data.py` pulls it down; see data/README.md.
+data/raw/
+data/processed/
+*.zip
+
+# --- trained models & run outputs -------------------------------------------
+# Keep the FINAL submission model (we'll force-add it: git add -f models/final/)
+# but not the dozens of intermediate fold checkpoints.
+models/*
+!models/final/
+results/*
+!results/.gitkeep
+
+# --- python ------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.venv/
+venv/
+.python-version
+
+# --- jupyter -----------------------------------------------------------------
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+.virtual_documents/
+.jupyter/
+anaconda_projects/
+__marimo__/
+
+# --- secrets -----------------------------------------------------------------
+# Never commit a Kaggle token or a GitHub PAT. On Kaggle these live in
+# Add-ons > Secrets; locally they live in ~/.kaggle/.
+kaggle.json
+*.pem
+.env
+.env.*
+
+# --- os / editor -------------------------------------------------------------
+.DS_Store
+.vscode/
+.idea/
+*.swp
