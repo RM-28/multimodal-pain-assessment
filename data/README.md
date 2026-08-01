@@ -19,6 +19,24 @@ python scripts/get_data.py --watch    # + the 4.9 GB wristband tier
 
 No Kaggle credentials required — the dataset is served unauthenticated.
 
+### If you do need authenticated Kaggle access
+
+For `kagglehub`, the Kaggle CLI, or anything touching private resources.
+
+⚠️ **Kaggle now issues two different credential formats and they are not
+interchangeable.** A token beginning `KG…` is a **Bearer token**, and it does
+*not* work in the classic `~/.kaggle/kaggle.json` `{"username", "key"}` file —
+that path silently returns 401. Use the environment variable instead:
+
+```bash
+export KAGGLE_API_TOKEN="KG..."      # the bare token from Settings > API
+python -c "import kagglehub; print(kagglehub.whoami())"
+```
+
+`KAGGLE_USERNAME` + `KAGGLE_KEY` also fail with a `KG…` token — those are for
+the older key format. On Kaggle or Colab, store it as a secret named
+`KAGGLE_API_TOKEN`.
+
 If you'd rather do it by hand:
 
 ```bash
