@@ -49,6 +49,9 @@ kaggle.json
 models/*
 results/*
 !results/.gitkeep
+# Metrics tables are small and are the input to the eval/report work, so they
+# travel with the repo. Figures and logs don't.
+!results/*.csv
 *.h5
 *.keras
 

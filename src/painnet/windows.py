@@ -91,6 +91,19 @@ def encode_labels(y) -> np.ndarray:
     return np.asarray([config.CLASS_TO_IDX[v] for v in y], dtype=np.int32)
 
 
+def to_tabular(X) -> np.ndarray:
+    """Flatten (n, timesteps, channels) -> (n, channels*4) summary stats.
+
+    LightGBM can't eat a 3D tensor, so each window collapses to mean/std/min/max
+    per channel. Crude, but at 1 Hz over 60s that's most of what's there, and it
+    makes the tree baseline a fair comparison rather than a straw man -- if it
+    matches the conv nets, that tells us the sequence structure isn't buying much.
+    """
+    return np.concatenate(
+        [X.mean(1), X.std(1), X.min(1), X.max(1)], axis=1
+    ).astype(np.float32)
+
+
 def class_weights(y_int) -> dict[int, float]:
     """Median-frequency weights, to stop the model just predicting 'headache'.
 
