@@ -1,5 +1,63 @@
-data/
-.venv/
+# --- data ------------------------------------------------------------------
+# The PhysioPain archive is 1.26 GB zipped / 5.36 GB extracted. Nobody wants
+# that in git. `python scripts/get_data.py` pulls it down; see data/README.md.
+#
+# NB: scoped to data/raw and data/processed rather than a bare `data/`, so that
+# data/README.md (the how-to-get-it instructions) stays tracked.
+data/raw/
+data/processed/
+*.zip
+
+# --- python ------------------------------------------------------------------
 __pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.venv/
+venv/
+.python-version
+
+# --- jupyter -----------------------------------------------------------------
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+.virtual_documents/
+.jupyter/
+anaconda_projects/
+__marimo__/
+
+# --- secrets -----------------------------------------------------------------
+# Never commit a Kaggle token or a GitHub PAT. On Kaggle these live in
+# Add-ons > Secrets; locally they live in ~/.kaggle/.
+kaggle.json
+*.pem
+.env
+.env.*
+
+# --- os / editor -------------------------------------------------------------
+.DS_Store
+.vscode/
+.idea/
+*.swp
+
+# --- trained models & run outputs -------------------------------------------
+# Intermediate fold checkpoints are noise; the FINAL submission model is a
+# required deliverable ("saved model with weights and biases"), so it has to be
+# committable.
+models/*
+results/*
+!results/.gitkeep
 *.h5
 *.keras
+
+# --- prose linting -----------------------------------------------------------
+# `vale sync` pulls the deslop style package into styles/. Synced, not committed.
+styles/
+
+# Keep this block LAST. gitignore is last-match-wins, so the un-ignore has to
+# come after *.keras / *.h5 -- otherwise models/final/best.keras matches the
+# extension rule and gets dropped despite the models/final exception above.
+!models/final/
+!models/final/**
