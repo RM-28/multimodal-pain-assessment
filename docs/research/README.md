@@ -62,7 +62,7 @@ patients**, under two induction protocols (movement, video). Reports
 **AUC 0.83 ± 0.09** and **0.81 ± 0.15**.
 
 **Why it matters to us:** the single most useful calibration point in the folder.
-Multi-channel *scalp* EEG, a within-subject binary task — far easier than ours —
+Multi-channel *scalp* EEG on a within-subject binary task, far easier than ours,
 and it lands at ~0.83 AUC with a ±0.09 spread. We have one dry frontal electrode,
 four classes, and subject-independent evaluation. **If we report near-perfect
 numbers, this paper is the evidence that something is wrong.** Cite it when
@@ -89,8 +89,8 @@ set is also not comparable to our macro-F1.
 `Design_and_Evaluation_of_Deep_Learning_Models_for_Continuous_Acute_Pain_Detection_Based_on_Phasic_Electrodermal_Activity.pdf` · IEEE JBHI 27(9):4250
 
 Systematically compares **1D-CNN, LSTM, and three CNN–LSTM hybrids** on phasic
-EDA from 36 volunteers under thermal-grill pain. Best model — a parallel TCN +
-stacked bi/uni-directional LSTM — reaches **F1 77.8%**, and generalises to 37
+EDA from 36 volunteers under thermal-grill pain. The best model, a parallel TCN
+plus stacked bi/uni-directional LSTM, reaches **F1 77.8%** and generalises to 37
 independent subjects from BioVid at 91.5% accuracy.
 
 **Why it matters to us:** the best single justification for our model ladder,

@@ -145,8 +145,8 @@ trailing one too). `id`, `obs`, `pain_type` are clean. Read with
 | `Delta … Gamma2` (8 bands) | **keep** | the actual signal |
 | `Attention`, `Meditation` | **keep** | NeuroSky eSense scores, only 0.28% NA |
 | `Derived` | **drop** | 100.00% NA in every file |
-| `totPwr` | **drop** | *exactly* `sum(bands)` — correlation 1.0, max abs diff 0 |
-| `class` | **drop for now** | undocumented; values `X` (82,020) / `X*` (13,167) / `1` (5,294) / `1*` (875). Never takes `1` for menstrual subjects. Meaning unknown — investigate before using. |
+| `totPwr` | **drop** | *exactly* `sum(bands)`: correlation 1.0, max abs diff 0 |
+| `class` | **drop for now** | undocumented; values `X` (82,020) / `X*` (13,167) / `1` (5,294) / `1*` (875). Never takes `1` for menstrual subjects. Meaning unknown, so investigate before using. |
 | `obs`, `time` | drop | row index and clock |
 
 ### Scale
@@ -215,7 +215,7 @@ exists for this. This is a reportable result, not a flaw to hide.
 ### Two subjects disagree with their own self-report
 
 Survey pain type vs. EEG `pain_type`, cross-tabulated on the 83 merged subjects:
-everything matches **except two subjects — `S059` and `S071` — labelled
+everything matches **except two subjects, `S059` and `S071`, labelled
 `menstrual_pain` in the EEG files who self-reported "Abdominal pain"**. So that
 10-subject class is really 8 menstrual + 2 abdominal.
 `painnet.data.subject_table()` flags these as `label_disagrees`; decide
@@ -242,10 +242,10 @@ more spread. Worth a sentence, probably not worth modelling around.
 
 Three numbers circulate; they don't reconcile:
 
-- **99** — Kaggle/Mendeley description, and the survey row count
-- **93** — "usable" figure in our proposal, from the source paper
-- **83** — subject CSVs actually present in `RAW EEG DATA (1Hz)/All/` (**what we use**)
-- **86** — unique subjects in `PROCESSED WATCH DATA/`
+- **99**: Kaggle/Mendeley description, and the survey row count
+- **93**: "usable" figure in our proposal, from the source paper
+- **83**: subject CSVs actually present in `RAW EEG DATA (1Hz)/All/` (**what we use**)
+- **86**: unique subjects in `PROCESSED WATCH DATA/`
 
 The 83/86 mismatch means the fusion model can only use the intersection. Quote
 **83** for the EEG-only results and state the intersection size for fusion.
@@ -260,7 +260,7 @@ reusing existing code" section, and it needs care:
 
 - **No licence file.** Default copyright is all-rights-reserved. Cite it, read
   it, do **not** copy code into a graded deliverable (Turnitin).
-- **Two files only** — `README.md` and `obj1_pipeline.py`. The `src/`, `data/`,
+- **Two files only**: `README.md` and `obj1_pipeline.py`. The `src/`, `data/`,
   `results/`, `notebooks/`, `docs/` folders its README advertises don't exist,
   and neither does the `requirements.txt` its install instructions reference.
 - **No reported metrics.** No results directory, no tables. Its description
