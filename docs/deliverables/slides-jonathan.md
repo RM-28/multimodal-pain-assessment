@@ -230,11 +230,14 @@ belong there from our side:
   proposal predicted fusion wins outright; it did not, and the wristband alone
   is the strongest single signal. Per-class strengths differ (fusion best on
   headache, wristband best on back pain, EEG best on menstrual pain), which is
-  the interesting nuance.
+  the interesting nuance. The ranking is confirmed by an independent rerun on
+  a second machine (`docs/deliverables/verification-notes.md`): wristband >
+  fusion > EEG holds there too, with means shifted within one std.
 - **Slide 14 (lessons):** count subjects, not rows; measure your floor instead
   of deriving it (our 0.361 vs 0.132 mix-up); a single split on 83 people is
   noise (fold 4); audit the archive before modeling (row-0 leak, duplicated
-  subjects); and one open caveat to state plainly: all 10 menstrual-pain
-  participants are female, so that class is confounded with sex. We built the
-  probe to quantify it (train the same model on a sex target) but have not run
-  it; it is honest future work if time runs out.
+  subjects); and the sex confound, now quantified: all 10 menstrual-pain
+  participants are female, and the same pipeline that reads pain at 0.31
+  balanced accuracy reads SEX at 0.72 from the same EEG windows. The model has
+  a far more reliable path to the menstrual class than pain itself. Numbers in
+  `verification-notes.md`; this is a result, not a caveat.
