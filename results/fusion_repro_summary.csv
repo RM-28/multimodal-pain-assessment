@@ -1,0 +1,4 @@
+model,ours_macro_f1,meng_macro_f1,ours_acc
+eeg_tcn,0.196 ± 0.042,0.176 ± 0.031,0.220 ± 0.046
+watch_lightgbm,0.291 ± 0.056,0.218 ± 0.079,0.335 ± 0.049
+fusion_cnn,0.241 ± 0.051,0.202 ± 0.062,0.291 ± 0.046
