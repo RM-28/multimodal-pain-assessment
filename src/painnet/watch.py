@@ -7,8 +7,6 @@ from painnet import windows as eeg_windows
 
 WATCH_FEATURE_COLS = ['bvp', 'eda', 'x', 'y', 'z', 'temperature']
 
-WATCH_DROP_COLS = ['pain_scale', 'pain_type', 'person_id']
-
 WATCH_HZ = 4
 SUBJECT_COL = 'person_id'
 LABEL_COL = 'pain_type'
@@ -115,7 +113,7 @@ def zscore_per_subject(data, feature_cols = WATCH_FEATURE_COLS):
     return out
 
 
-def build_watch_dataset(window_seconds = config.WINDOW_SECONDS, step_seconds = config.STEP_SECONDS, tier_hz = WATCH_HZ):
+def build_watch_dataset(window_seconds = config.WINDOW_SECONDS, step_seconds = config.STEP_SECONDS, tier_hz = WATCH_HZ, return_intensity = False):
     data = load_watch_all(tier_hz)
     data = zscore_per_subject(data)
 
@@ -124,11 +122,13 @@ def build_watch_dataset(window_seconds = config.WINDOW_SECONDS, step_seconds = c
 
     X = []
     y = []
+    y_scale = []
     groups = []
 
     for subject_id, group in data.groupby(SUBJECT_COL, sort = True):
         signals = group[WATCH_FEATURE_COLS].to_numpy(dtype=np.float32)
         label = group[LABEL_COL].iloc[0]
+        scale = group['pain_scale'].iloc[0]
  
         if len(signals) < window_rows:
             print('Skipping', subject_id, '- only', len(signals), 'rows')
@@ -138,6 +138,7 @@ def build_watch_dataset(window_seconds = config.WINDOW_SECONDS, step_seconds = c
         while start + window_rows <= len(signals):
             X.append(signals[start:start + window_rows])
             y.append(label)
+            y_scale.append(scale)
             groups.append(subject_id)
             start = start + step_rows
 
@@ -146,15 +147,16 @@ def build_watch_dataset(window_seconds = config.WINDOW_SECONDS, step_seconds = c
 
     X = np.stack(X)
     y = np.array(y)
-
+    y_scale = np.array(y_scale)
     groups = np.array(groups)
 
     print(f"Built watch dataset with {len(X)} windows, shape: {X.shape}, labels: {np.unique(y)}")
     print("participants:", np.unique(groups))
-
+    if return_intensity:
+        return X, y, y_scale, groups
     return X, y, groups
 
-def build_fusion_dataset(window_seconds = config.WINDOW_SECONDS, step_seconds = config.STEP_SECONDS, tier_hz = WATCH_HZ):
+def build_fusion_dataset(window_seconds = config.WINDOW_SECONDS, step_seconds = config.STEP_SECONDS, tier_hz = WATCH_HZ, return_intensity = False):
     eeg = eeg_data.load_raw_eeg()
     eeg = eeg_windows.zscore_per_subject(eeg, config.EEG_FEATURE_COLS)
 
@@ -180,6 +182,7 @@ def build_fusion_dataset(window_seconds = config.WINDOW_SECONDS, step_seconds = 
     X_watch = []
 
     y = []
+    y_scale = []
     groups = []
     skipped = []
 
@@ -200,6 +203,7 @@ def build_fusion_dataset(window_seconds = config.WINDOW_SECONDS, step_seconds = 
             continue
 
         label = eeg_group[config.LABEL_COL].iloc[0]
+        scale = watch_group['pain_scale'].iloc[0]
 
         t = 0
         while t + window_seconds <= total_seconds:
@@ -214,6 +218,7 @@ def build_fusion_dataset(window_seconds = config.WINDOW_SECONDS, step_seconds = 
                     X_eeg.append(eeg_window)
                     X_watch.append(watch_window)
                     y.append(label)
+                    y_scale.append(scale)
                     groups.append(subject_id)
             t += step_seconds
 
@@ -223,6 +228,7 @@ def build_fusion_dataset(window_seconds = config.WINDOW_SECONDS, step_seconds = 
     X_eeg = np.stack(X_eeg)
     X_watch = np.stack(X_watch)
     y = np.array(y)
+    y_scale = np.array(y_scale)
     groups = np.array(groups)
 
     print('Pain windows: ', len(X_eeg))
@@ -239,6 +245,8 @@ def build_fusion_dataset(window_seconds = config.WINDOW_SECONDS, step_seconds = 
         n_people = len(set(groups[mask]))
         print(pain_type.ljust(16), str(n_people).rjust(12), str(n_windows).rjust(8))
  
+    if return_intensity:
+        return X_eeg, X_watch, y, y_scale, groups
     return X_eeg, X_watch, y, groups
 
 
