@@ -1,248 +1,225 @@
 # Voiceover script: Jonathan, slides 7-12
 
-Read this out loud, near enough verbatim. It is written for the ear, not the
-eye: short sentences, one idea at a time, contractions where you'd naturally
-use them. Roughly **9 minutes** of the 25.
+Read near-verbatim. Written for the ear: short sentences, one idea per breath.
+About **6 and a half minutes** across six slides.
 
 **Before you record**
 
-- Pace: about 140 words a minute. Don't rush the numbers, rush nothing else.
-- `[PAUSE]` means a real beat, half a second. It's where the listener catches up.
-- `[FIG]` means the figure should be on screen by then.
-- Say numbers the way you'd say them aloud: "point two four zero", not
-  "zero point twenty-four". "F one", not "F-sub-one".
-- Two words to keep clean: **Empatica** (em-PAT-ih-ka) and **PhysioPain**
-  (FIZZ-ee-oh-pain).
-- If you fluff a line, stop, breathe, and retake that sentence only. Don't
-  restart the slide.
+- Pace: roughly 140 words a minute. Slow down on numbers, nothing else.
+- `[PAUSE]` is a real beat, about half a second. `[FIG]` means that figure
+  should be on screen.
+- Say numbers aloud the natural way: "point two four zero", "F one".
+- Two to keep clean: **Empatica** (em-PAT-ih-ka), **PhysioPain** (FIZZ-ee-oh-pain).
+- Fluff a line? Stop, breathe, retake that sentence. Don't restart the slide.
 
 ---
 
-## Slide 7 — Data Collecting  (~80 s)
+## Slide 7 — Data Collecting  (~65 s)
 
-Our data comes from PhysioPain, a public dataset collected at Istanbul Kultur
-University and released under a Creative Commons licence.
-
-[PAUSE]
-
-Ninety-nine people took part. Each one wore two consumer devices for a single
-twenty-minute session. The first is a NeuroSky headband. That's a single dry
-electrode on the forehead, reporting eight EEG frequency band powers once per
-second. The second is an Empatica E four wristband, which gives us blood volume
-pulse, skin conductance, skin temperature, and motion.
+Our data is PhysioPain, collected at Istanbul Kultur University and released
+publicly under a Creative Commons licence.
 
 [PAUSE]
 
-The label is whatever pain the participant reported that day. Headache, back
-pain, menstrual pain, or none.
+Ninety-nine people, one twenty-minute session each, wearing two consumer
+devices. A NeuroSky headband, which is a single dry electrode on the forehead
+reporting eight EEG band powers per second. And an Empatica E four wristband:
+pulse, skin conductance, temperature, motion.
 
-Now, two things about this dataset shaped every decision you'll see in the next
-few slides.
+The label is the pain each person reported that day. Headache, back pain,
+menstrual pain, or none.
 
-First, the EEG is about the cheapest brain signal you can buy. One electrode, no
-spatial information at all.
+[PAUSE]
 
-Second, and this matters more: each participant has exactly one label for their
-entire recording. We checked all eighty-three usable files. There are no
-exceptions.
+Two things here shaped everything that follows.
+
+First, this is about the cheapest brain signal money can buy. One electrode. No
+spatial information.
+
+Second, each participant has one label for their whole recording. We checked all
+eighty-three usable files. No exceptions.
 
 [FIG: subjects_per_class.png]
 
-And here's the class balance, counted in people rather than rows. Thirty
-headache, twenty-eight back pain, fifteen no pain, and just ten with menstrual
-pain. Hold onto that ten. It comes back.
+And the class balance, counted in people rather than rows. Thirty headache,
+twenty-eight back pain, fifteen no pain, and ten with menstrual pain. That ten
+matters later.
 
 ---
 
-## Slide 8 — Data Preprocessing  (~85 s)
+## Slide 8 — Data Preprocessing  (~70 s)
 
-Before writing a single line of model code, we audited the archive itself. That
-turned out to be the best time we spent on this project.
-
-[PAUSE]
-
-We found three problems.
-
-The first one is serious. The dataset ships a processed EEG folder that looks
-convenient. But participants who have more than one pain condition appear in two
-or three different label folders, with byte-identical signals. One person shows
-up three times. About a quarter of the rows carry more than one label. If you
-train on that, identical inputs end up on both sides of your split with
-conflicting answers. So we don't use it. We use the raw one-hertz tier, which is
-clean: eighty-three files, eighty-three people, one label each.
+Before writing any model code, we audited the archive itself. Best time we spent
+on this project.
 
 [PAUSE]
 
-Second problem. The Empatica writes its sample rate on line two of every file,
-and the conversion script kept it. So the first data row of every wristband file
-claims the skin temperature was four degrees. Our loader drops that row.
+The serious find first. The dataset ships a processed EEG folder that looks
+convenient. But anyone with more than one pain condition appears in two or three
+label folders, with identical signals. One person appears three times. About a
+quarter of the rows carry more than one label.
 
-Third, smaller. One column is completely empty, and another is just the sum of
-the other eight. Both go.
+Train on that, and identical inputs sit on both sides of your split with
+conflicting answers.
 
-The actual preprocessing is deliberately dull. We standardise every channel
-within each person, because the raw values vary by a factor of ten thousand and
-mostly tell you how well the headset was sitting. Then we cut sixty-second
-windows, every fifteen seconds.
+We don't use it. We use the raw one-hertz files: eighty-three files,
+eighty-three people, one label each.
+
+[PAUSE]
+
+Second find. The Empatica writes its sample rate on line two of every file, and
+the conversion script kept it. The first data row of every wristband file claims
+the skin temperature was four degrees. Our loader drops it.
+
+The real preprocessing is dull on purpose. We standardise each channel within
+each person. Raw band powers vary by a factor of ten thousand, and mostly they
+tell you how well the headset was sitting. Then sixty-second windows, every
+fifteen seconds.
 
 ---
 
-## Slide 9 — Methodology  (~90 s)
+## Slide 9 — Methodology  (~75 s)
 
-This is the slide I'd ask you to remember.
-
-[PAUSE]
-
-Every participant has one label. So if you split your data randomly, the model
-doesn't learn pain. It learns to recognise people. And because our windows
-overlap, near-identical slices of the same recording end up in training and in
-testing at the same time. You get a beautiful number that means absolutely
-nothing.
+This is the part that matters most.
 
 [PAUSE]
 
-So every split we do is grouped by person. All of one participant's windows go
-to training, or all of them go to testing. Never both. We also stratify, so the
-ten menstrual-pain participants spread across the folds instead of landing in
-one.
-
-And we didn't leave that as a good intention. The splitting function checks it
-every single time, and raises an error if a person ever appears on both sides.
-It has its own tests. On a dataset this small, the split isn't a detail. The
-split is the result.
+Every participant has one label. Split your data randomly and the model doesn't
+learn pain. It learns to recognise people. Our windows overlap, so near-identical
+slices of one recording land in training and testing at once. You get a
+beautiful number that means nothing.
 
 [PAUSE]
 
-One more thing, and this is a correction to our own work. What's the number to
-beat? A model that just guesses "headache" every time gets thirty-six percent
-accuracy. We quoted that as our bar for about a week.
+Every split we do is grouped by person instead. All of someone's windows go to
+training, or all go to testing. Never both. We stratify too, so the ten
+menstrual-pain participants spread across folds rather than landing in one.
 
-But its macro F one is zero point one three two. Because it scores a flat zero
-on three of the four classes.
+That isn't left to good intentions. The splitting function checks it on every
+fold and throws an error if anyone appears on both sides. It has its own tests.
+On data this small, the split is the result.
 
-Macro F one is the honest metric when your classes are this unbalanced. So
-nought point one three two is the real floor. Measure your baseline. Don't
-derive it in your head.
+[PAUSE]
+
+One correction to our own work. What's the number to beat? A model that always
+guesses "headache" gets thirty-six percent accuracy, and we quoted that as our
+bar for about a week.
+
+But its macro F one is point one three two. It scores zero on three of the four
+classes.
+
+Macro F one is the honest metric when classes are this unbalanced. Point one
+three two is the real floor. Measure your baseline, don't derive it in your head.
 
 ---
 
-## Slide 10 — Model selection and parameters  (~80 s)
+## Slide 10 — Model selection and parameters  (~65 s)
 
-We tested four architectures, plus one deliberate control.
-
-[PAUSE]
-
-The baseline is a small one-dimensional convolutional network. It picks up local
-shape in the waveform. Then a CNN-LSTM, which hands those convolutional features
-to a recurrent layer. Then a temporal convolutional network, or TCN, which uses
-dilated convolutions to see the entire sixty-second window at once, without any
-recurrence.
-
-And then the fusion model, which is really why this is a deep learning project.
-Our two devices sample at different rates. One hertz for the EEG, four hertz for
-the wristband. Rather than resample one and pretend they match, each modality
-gets its own encoder branch, and we join the learned representations before the
-classifier. That's the Keras functional API doing exactly what it exists for.
+Four architectures, plus one deliberate control.
 
 [PAUSE]
 
-Every one of these models is deliberately tiny. Tens of thousands of parameters,
-not millions. With eighty-three people, a big network just memorises
-individuals.
+A small one-dimensional convolutional network as the baseline. A CNN-LSTM, which
+hands those features to a recurrent layer. A temporal convolutional network,
+which sees the whole sixty-second window at once without recurrence.
 
-Same reasoning behind the control. We ran LightGBM, a gradient-boosted tree,
-which sees only forty summary statistics per window. No time series at all. If
-that keeps up with the neural networks, it tells us something real.
+Then the fusion model, which is really why this is a deep learning project. Our
+two devices sample at different rates. One hertz, four hertz. Rather than
+resample one and pretend they match, each modality gets its own encoder branch,
+and we join the learned representations before the classifier.
 
-It keeps up. More on that shortly.
+[PAUSE]
+
+Every model here is deliberately tiny. Tens of thousands of parameters, not
+millions. With eighty-three people, a large network just memorises individuals.
+
+Same thinking behind the control. We ran a gradient-boosted tree that sees only
+forty summary numbers per window. No time series at all. If that keeps up with
+the neural networks, it's telling us something.
+
+It keeps up.
 
 ---
 
-## Slide 11 — Training, validation, testing  (~75 s)
+## Slide 11 — Training, validation, testing  (~55 s)
 
-Training is intentionally boring, and I mean that as a compliment.
-
-[PAUSE]
-
-Every model gets the same treatment. We reset the random seed before building
-each one, so the comparison is fair. The loss is weighted by class frequency, so
-the model can't just ignore the rare categories. And we stop early when
-validation loss stops improving.
-
-Everything converges in nine to seventeen epochs. The entire EEG suite, five
-folds across four models, runs in under four minutes on a laptop CPU. Small data
-has very few advantages. That's one of them.
+Training is boring on purpose.
 
 [PAUSE]
 
-For the fusion experiments, Meng tightened this further with a nested split.
-Inside each fold's training set, she carved out a separate validation group of
-people. So training, validation, and testing are three completely separate sets
-of participants. Early stopping never sees a test subject, not even indirectly.
-The notebook asserts that at runtime.
+Same treatment for every model. We reset the random seed before building each
+one, so the comparison is fair. The loss is weighted by class frequency, so rare
+categories can't be ignored. We stop early when validation loss stops improving.
 
-Reproducibility we handled the boring way too. Fixed seeds, a pinned class order
-so the confusion matrices always line up, and every results table committed to
-the repository right next to the code that produced it.
+Everything converges in nine to seventeen epochs. The whole EEG suite, five folds
+across four models, runs in under four minutes on a laptop.
+
+[PAUSE]
+
+For fusion, Meng went further with a nested split. Inside each fold's training
+set she carved out a separate validation group of people. Training, validation
+and testing are three separate sets of participants. Early stopping never sees a
+test subject, even indirectly.
+
+Reproducibility is handled the boring way too. Fixed seeds, a pinned class order,
+and every results table committed next to the code that made it.
 
 ---
 
-## Slide 12 — Evaluation and performance  (~95 s)
+## Slide 12 — Evaluation and performance  (~90 s)
 
 Here are the honest numbers.
 
 [FIG: eeg_baselines_folds.png]
 
-On EEG alone, the TCN comes out best, at nought point two four zero macro F one,
-against that floor of nought point one three two. All three neural networks
-clear the floor with statistical significance.
+On EEG alone the TCN comes out best, at point two four zero macro F one, against
+that floor of point one three two. All three neural networks clear the floor
+with statistical significance.
 
 [PAUSE]
 
 But don't look at the bars. Look at the dots. Each dot is one fold.
 
-LightGBM's five folds run from nought point one one to nought point three five.
-Same model. Same data. It looks either useless or like our best model, depending
-entirely on which seventeen people you happened to test it on.
+The tree's five folds run from point one one to point three five. Same model,
+same data. It looks either useless or like our best model, depending entirely on
+which seventeen people you tested it on.
 
-So the TCN's real advantage isn't a higher average. It's that its folds cluster
-about twice as tightly.
+The TCN's real advantage isn't a higher average. Its folds cluster about twice as
+tightly.
 
 [FIG: fold4_reversal.png]
 
 [PAUSE]
 
-And this is the most instructive result we produced. On fold four, the CNN
-records its worst score of the entire project, while LightGBM records its best.
-Same test subjects. Same day.
+And this is the most instructive result we produced. On fold four the CNN records
+its worst score of the project, while the tree records its best. Identical test
+subjects.
 
-A paper that evaluated on one split could have concluded that trees beat deep
-learning by a factor of three. Or the exact opposite. And both papers would have
-looked perfectly rigorous.
+Evaluate on one split, and you could conclude that trees beat deep learning by a
+factor of three. Or the exact opposite. Both write-ups would look rigorous.
 
 That's why every number we report is a mean and a standard deviation across
-folds. Not a single split.
+folds.
 
 [PAUSE]
 
-For context: published work using proper multi-channel research EEG, on an
-easier within-subject yes-or-no task, reports an AUC around nought point eight
-three. We're using one dry electrode, four categories, and complete strangers in
-the test set. Our numbers reflect that, and they should.
+For context: published work using proper multi-channel research EEG, on an easier
+yes-or-no task within a single person, reports an AUC around point eight three.
+We have one dry electrode, four categories, and strangers in the test set. Our
+numbers reflect that.
 
-The contribution here isn't the accuracy. It's knowing what the accuracy is
-worth.
+The contribution isn't the accuracy. It's knowing what the accuracy is worth.
 
 ---
 
 ## Optional 20-second add-on
 
-Use this only if you're recording the sex-confound finding yourself rather than
-leaving it to slide 13 or 14. Check with Meng first so it isn't said twice.
+Only if you're covering the sex-confound result yourself rather than leaving it
+to slide 13 or 14. Check with Meng so it isn't said twice.
 
 > One last finding, and it's the one I'd flag hardest. All ten of our
-> menstrual-pain participants are women. So we asked: can these same models
-> predict sex? From the same EEG windows, they read sex at nought point seven
-> two balanced accuracy, and pain at nought point three one. The model has a far
-> more reliable route to that category than pain itself. We can't fix that with
-> ten people. But we can measure it, and say so.
+> menstrual-pain participants are women. So we asked whether these same models
+> can predict sex. From the same EEG windows they read sex at point seven two
+> balanced accuracy, and pain at point three one. The model has a far more
+> reliable route to that category than pain itself. We can't fix that with ten
+> people. We can measure it, and say so.
