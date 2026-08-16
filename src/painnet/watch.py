@@ -5,12 +5,14 @@ from painnet import config
 from painnet import data as eeg_data
 from painnet import windows as eeg_windows
 
+#variable declaration
 WATCH_FEATURE_COLS = ['bvp', 'eda', 'x', 'y', 'z', 'temperature']
 
 WATCH_HZ = 4
 SUBJECT_COL = 'person_id'
 LABEL_COL = 'pain_type'
 
+#reads all watch data from the processed directory and returns a single dataframe
 def load_watch_all(tier_hz = WATCH_HZ):
     root = str(config.WATCH_PROCESSED_DIR)
 
@@ -19,6 +21,7 @@ def load_watch_all(tier_hz = WATCH_HZ):
 
     all_frames = []
 
+    #one pain type = one folder
     for pain_type in config.PAIN_CLASSES:
         folder = os.path.join(root, pain_type, 'signal_' + str(tier_hz))
 
@@ -37,8 +40,10 @@ def load_watch_all(tier_hz = WATCH_HZ):
                 print("Warning: No signal folder found for pain type:", pain_type)
                 continue
 
+        #sorted to ensure consistent order of files
         filenames = sorted(os.listdir(folder))
 
+        #one csv file = one participant
         for name in filenames:
             if not name.endswith('.csv'):
                 continue
@@ -78,13 +83,14 @@ def load_watch_all(tier_hz = WATCH_HZ):
 
     return data
 
-
+#summary of watch data by participant, including number of samples and pain types
 def watch_summary(data = None):
     if data is None:
         data = load_watch_all()
 
     rows = []
 
+    #group by participant and summarize the number of samples and pain types
     for subject_id, group in data.groupby(SUBJECT_COL):
         row = {
             'subject_id': subject_id,
@@ -98,9 +104,11 @@ def watch_summary(data = None):
     summary_df = summary_df.set_index('subject_id')
     return summary_df
 
+#z-score normalization of watch data per participant
 def zscore_per_subject(data, feature_cols = WATCH_FEATURE_COLS):
     out = data.copy()
 
+    #group by participant and compute z-score normalization for each feature column
     for col in feature_cols:
         mean = out.groupby(SUBJECT_COL)[col].transform('mean')
         std = out.groupby(SUBJECT_COL)[col].transform('std')
@@ -112,7 +120,7 @@ def zscore_per_subject(data, feature_cols = WATCH_FEATURE_COLS):
 
     return out
 
-
+#builds dataset of watch data windows, with option for pain intensity
 def build_watch_dataset(window_seconds = config.WINDOW_SECONDS, step_seconds = config.STEP_SECONDS, tier_hz = WATCH_HZ, return_intensity = False):
     data = load_watch_all(tier_hz)
     data = zscore_per_subject(data)
@@ -124,7 +132,7 @@ def build_watch_dataset(window_seconds = config.WINDOW_SECONDS, step_seconds = c
     y = []
     y_scale = []
     groups = []
-
+    #group by participant and create windows of data
     for subject_id, group in data.groupby(SUBJECT_COL, sort = True):
         signals = group[WATCH_FEATURE_COLS].to_numpy(dtype=np.float32)
         label = group[LABEL_COL].iloc[0]
@@ -135,6 +143,7 @@ def build_watch_dataset(window_seconds = config.WINDOW_SECONDS, step_seconds = c
             continue
  
         start = 0
+        #create windows of data with specified window and step sizes
         while start + window_rows <= len(signals):
             X.append(signals[start:start + window_rows])
             y.append(label)
@@ -156,6 +165,7 @@ def build_watch_dataset(window_seconds = config.WINDOW_SECONDS, step_seconds = c
         return X, y, y_scale, groups
     return X, y, groups
 
+#builds dataset of fused EEG and watch data windows, with option for pain intensity
 def build_fusion_dataset(window_seconds = config.WINDOW_SECONDS, step_seconds = config.STEP_SECONDS, tier_hz = WATCH_HZ, return_intensity = False):
     eeg = eeg_data.load_raw_eeg()
     eeg = eeg_windows.zscore_per_subject(eeg, config.EEG_FEATURE_COLS)
@@ -163,14 +173,17 @@ def build_fusion_dataset(window_seconds = config.WINDOW_SECONDS, step_seconds = 
     watch = load_watch_all(tier_hz)
     watch = zscore_per_subject(watch)
 
+    #group EEG and watch data by participant
     eeg_groups = {}
     for subject_id, group in eeg.groupby(config.SUBJECT_COL):
         eeg_groups[subject_id] = group
 
+    #group watch data by participant
     watch_groups = {}
     for subject_id, group in watch.groupby(SUBJECT_COL):
         watch_groups[subject_id] = group
 
+    #find common participants between EEG and watch data
     common_subjects = []
     for subject_id in sorted(eeg_groups.keys()):
         if subject_id in watch_groups:
@@ -186,6 +199,7 @@ def build_fusion_dataset(window_seconds = config.WINDOW_SECONDS, step_seconds = 
     groups = []
     skipped = []
 
+    #create windows of fused EEG and watch data for common participants
     for subject_id in common_subjects:
         eeg_group = eeg_groups[subject_id]
         watch_group = watch_groups[subject_id]
@@ -205,6 +219,7 @@ def build_fusion_dataset(window_seconds = config.WINDOW_SECONDS, step_seconds = 
         label = eeg_group[config.LABEL_COL].iloc[0]
         scale = watch_group['pain_scale'].iloc[0]
 
+        #create windows of data with specified window and step sizes
         t = 0
         while t + window_seconds <= total_seconds:
             eeg_window = eeg_signals[t:t + window_seconds]
@@ -238,6 +253,7 @@ def build_fusion_dataset(window_seconds = config.WINDOW_SECONDS, step_seconds = 
     if len(skipped) > 0:
         print('Skipped subjects (not enough data):', skipped)
 
+    #count the number of participants and windows for each pain type
     print('Class Participants Windows')
     for pain_type in config.PAIN_CLASSES:
         mask = (y == pain_type)
@@ -249,7 +265,7 @@ def build_fusion_dataset(window_seconds = config.WINDOW_SECONDS, step_seconds = 
         return X_eeg, X_watch, y, y_scale, groups
     return X_eeg, X_watch, y, groups
 
-
+#check the duration of EEG and watch data for each participant
 def duration_check(tier_hz = WATCH_HZ):
     eeg = eeg_data.load_raw_eeg()
     watch = load_watch_all(tier_hz)
@@ -259,6 +275,7 @@ def duration_check(tier_hz = WATCH_HZ):
 
     rows = []
 
+    #compare the duration of EEG and watch data for each participant
     for subject_id in sorted(eeg_counts.index):
         if subject_id not in watch_counts.index:
             continue
