@@ -1,4 +1,4 @@
-# PhysioPain — dataset notes
+# PhysioPain, dataset notes
 
 Everything here was measured against the actual archive on 2026-07-31, not taken
 from the paper or the Kaggle page. Where our numbers disagree with a published
@@ -20,7 +20,7 @@ silently inflate your accuracy if you don't design around them.
 | Devices | NeuroSky MindWave Mobile 2 (EEG) + Empatica E4 (wristband) |
 | Institution | Istanbul Kültür Üniversitesi |
 
-Kaggle's `totalBytes` field reports **5,362,178,803** — that's the *uncompressed*
+Kaggle's `totalBytes` field reports **5,362,178,803**, that's the *uncompressed*
 size. The actual download is **1,264,163,874** bytes. Don't budget disk off the
 first number.
 
@@ -56,7 +56,7 @@ A window's label is determined entirely by *which person it came from*. So:
 
 - **Effective sample size is 83, not 101,356 rows or 6,465 windows.**
 - A random window-level split trains and tests on overlapping windows from the
-  same person — the model scores by recognising individuals, and you get a
+  same person, the model scores by recognising individuals, and you get a
   meaningless 95%+.
 - Grouped CV on `id` is not a nicety. It is the only thing making the numbers mean
   anything.
@@ -67,7 +67,7 @@ A window's label is determined entirely by *which person it came from*. So:
 
 ---
 
-## 3. Class balance — count subjects, not rows
+## 3. Class balance, count subjects, not rows
 
 | class | **subjects** | rows | subj % | ≈ per test fold (5-fold) |
 |---|---|---|---|---|
@@ -79,7 +79,7 @@ A window's label is determined entirely by *which person it came from*. So:
 
 **Majority-class baseline: 0.361.**
 
-Row counts track subject counts closely, so they add no information — quoting
+Row counts track subject counts closely, so they add no information, quoting
 "101,356 samples" would misrepresent the statistical power by three orders of
 magnitude.
 
@@ -98,7 +98,7 @@ stride this yields **6,465 windows** (46–118 per subject).
 
 ## 4. Two data-integrity defects
 
-### (a) The processed EEG tier duplicates comorbid subjects — **avoid it**
+### (a) The processed EEG tier duplicates comorbid subjects, **avoid it**
 
 11 subjects appear in 2–3 pain-type folders with **byte-identical signal
 matrices**. `S057` appears under `back_pain`, `headache` *and* `menstrual_pain`,
@@ -110,9 +110,9 @@ Consequences:
 
 - A hard accuracy ceiling well under 100%, since identical inputs have conflicting targets.
 - Grouping on `(person_id, pain_version)` gives **95** groups and splits identical
-  rows across folds — silent leakage. **Group on `person_id` alone (83 groups).**
+  rows across folds, silent leakage. **Group on `person_id` alone (83 groups).**
 
-**Mitigation: use `RAW EEG DATA (1Hz)/All/`**, which is disjoint — 83 files, 83
+**Mitigation: use `RAW EEG DATA (1Hz)/All/`**, which is disjoint, 83 files, 83
 unique subjects, one label each. This is what `painnet.data.load_raw_eeg()` reads.
 The wristband tier is also label-disjoint and unaffected.
 
@@ -121,11 +121,11 @@ The wristband tier is also label-disjoint and unaffected.
 The E4 writes the unix timestamp on row 1 and the **sample rate on row 2**. The
 dataset authors' script stripped row 1 but not row 2, so the rate values survive
 as the first data row. In `PROCESSED WATCH DATA/back_pain/signal_4/S006_4Hz.csv`,
-row 0 reads `eda=4.0, temperature=4.0` — literally the 4 Hz rate.
+row 0 reads `eda=4.0, temperature=4.0`, literally the 4 Hz rate.
 
 Confirmed for the natively-4 Hz channels (`eda`, `temperature`); the resampled
 channels (`bvp`, `x/y/z`) appear unaffected in the file checked. **Drop row 0 of
-every processed watch file regardless** — `painnet.data.load_watch()` does.
+every processed watch file regardless**, `painnet.data.load_watch()` does.
 
 ---
 
@@ -152,7 +152,7 @@ trailing one too). `id`, `obs`, `pain_type` are clean. Read with
 ### Scale
 
 Band powers span ~4 orders of magnitude (Delta mean 4.8e5, max 4.0e6; Gamma2
-min 24). Per-subject z-scoring is doing real work — without it the network mostly
+min 24). Per-subject z-scoring is doing real work, without it the network mostly
 learns how well each participant's headset was seated.
 
 Note this is a **single-channel** consumer EEG (one frontal dry electrode), so
@@ -163,14 +163,14 @@ genuine limitation worth stating in the report.
 
 ## 6. Pain intensity is in the survey, not the EEG files
 
-`SURVEY DATA/survey_answers_en.xlsx` — 99 rows × 108 columns, keyed by `id`.
+`SURVEY DATA/survey_answers_en.xlsx`, 99 rows × 108 columns, keyed by `id`.
 All 83 EEG subjects are present (16 survey subjects have no EEG).
 
 The intensity label is:
 
 > `Rate the severity of your pain (Likert scale) [How severe is your pain now?]`
 
-on a **5**-point scale — `Not severe at all` / `Mild` / `Moderate` / `Severe` /
+on a **5**-point scale, `Not severe at all` / `Mild` / `Moderate` / `Severe` /
 `Very severe`. (Our proposal assumed 4 levels; it's 5.)
 
 ### It is not viable as a 5-class subject-level target
@@ -184,7 +184,7 @@ on a **5**-point scale — `Not severe at all` / `Mild` / `Moderate` / `Severe` 
 | Severe | 4 | 6 | 3 | 0 | 13 |
 | **Very severe** | 2 | 0 | 2 | 0 | **4** |
 
-**"Very severe" has 4 subjects in the entire dataset** — under 1 per test fold.
+**"Very severe" has 4 subjects in the entire dataset**: under 1 per test fold.
 All `no_pain` subjects are missing or "Not severe at all", so intensity is
 partly collinear with type.
 
@@ -205,7 +205,7 @@ as if it were estimable.
 
 All 10 menstrual subjects are female; no male subject carries the label. Since
 sex has real effects on EDA, heart rate and skin temperature, a model can score
-on this class by detecting sex rather than pain — especially the wristband branch.
+on this class by detecting sex rather than pain, especially the wristband branch.
 
 **Recommended treatment:** train an identical model on a *sex* target and report
 its performance alongside the pain model. If sex is easier to predict, you have
@@ -254,8 +254,7 @@ The 83/86 mismatch means the fusion model can only use the intersection. Quote
 
 ## 9. Prior work on this dataset
 
-[`Nafiz2310/EEG-PainCategorization-PhysioPain`](https://github.com/Nafiz2310/EEG-PainCategorization-PhysioPain)
-— the only public implementation we found. Relevant to the "justification for
+[`Nafiz2310/EEG-PainCategorization-PhysioPain`](https://github.com/Nafiz2310/EEG-PainCategorization-PhysioPain), the only public implementation we found. Relevant to the "justification for
 reusing existing code" section, and it needs care:
 
 - **No licence file.** Default copyright is all-rights-reserved. Cite it, read
@@ -266,7 +265,7 @@ reusing existing code" section, and it needs care:
 - **No reported metrics.** No results directory, no tables. Its description
   claims SHAP interpretability; there is no `shap` import anywhere in the source.
 - Its example input path (`.../All/compiled_dataset.csv`) **does not exist** in
-  the archive — you'd have to build it by concatenating the 83 per-subject files.
+  the archive, you'd have to build it by concatenating the 83 per-subject files.
 - **Its "GroupKFold" evaluates a single fold**: the code is
   `train_idx, test_idx = list(gkf.split(...))[0]`. It does not cross-validate.
 
@@ -286,7 +285,7 @@ from painnet import config, data, windows, splits
 
 config.describe()          # where am I, is the data present
 df    = data.load_raw_eeg()      # 101,356 rows, warts handled
-subj  = data.subject_table()     # 83 rows — the real unit of analysis
+subj  = data.subject_table()     # 83 rows, the real unit of analysis
 X, y, groups = windows.build_dataset()   # (6465, 60, 10)
 
 for tr, te in splits.subject_folds(groups, windows.encode_labels(y)):

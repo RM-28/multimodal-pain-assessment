@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Same model but two very different scores</title>
+<!--
+  the numbers and the panel membership are exported from
+  scripts/run_leakage_demo.py into split-data.json, then pasted into the SPLIT
+  const below. see docs/demo/demo-voiceover.md for the narration.
+-->
+<style>
+  :root{
+    /* pulled from the deck's own theme1.xml so the embed matches */
+    --navy:#203864; --ink:#000000; --ink-2:#44546a; --grid:#e7e6e6;
+    --surface:#ffffff; --panel:#f2f2f2;
+    --c1:#4472c4;  /* accent1  headache       */
+    --c2:#ed7d31;  /* accent2  back pain      */
+    --c3:#a5a5a5;  /* accent3  no pain        */
+    --c4:#ffc000;  /* accent4  menstrual pain */
+    --bad:#c00000; --good:#548235;
+  }
+  /* everything below is plain css, no framework */
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{
+    background:var(--surface); color:var(--ink);
+    font:16px/1.5 Calibri,"Segoe UI",-apple-system,Helvetica,Arial,sans-serif;
+    display:flex; align-items:center; justify-content:center;
+    min-height:100vh; padding:24px;
+  }
+  .stage{width:min(1320px,100%)}
+  /* animation on the left, code on the right. stretch keeps the dark code panel exactly as tall as the svg so it doesn't float */
+  
+  .row{display:grid; grid-template-columns:minmax(0,1fr) 400px; gap:14px; align-items:stretch}
+  .code{
+    background:#0f1420; border-radius:10px; padding:14px 16px; overflow:hidden;
+    font:12.5px/1.62 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    color:#c8d3e6; display:flex; flex-direction:column; justify-content:center;
+  }
+  .code .file{color:#5f7495; font-size:11.5px; letter-spacing:.04em; margin-bottom:9px}
+  .code pre{white-space:pre-wrap; word-break:break-word}
+  /* poor man's syntax highlighting: k=keyword s=string c=comment f=function
+     n=number, hl/hlg = the red/green highlight behind a line we're pointing at */
+  .k{color:#c792ea} .s{color:#c3e88d} .c{color:#5f7495; font-style:italic}
+  .f{color:#82aaff} .n{color:#f78c6c} .hl{background:rgba(216,64,64,.22); border-radius:3px}
+  .hlg{background:rgba(12,163,12,.20); border-radius:3px}
+  header{display:flex; align-items:baseline; gap:14px; margin-bottom:6px}
+  h1{font-size:26px; font-weight:600; letter-spacing:-.01em; color:var(--navy)}
+  .sub{color:var(--ink-2); font-size:14px}
+  .caption{
+    min-height:52px; margin:14px 0 10px; font-size:19px; line-height:1.45;
+    color:var(--ink); max-width:88ch;
+  }
+  .caption b{color:var(--navy)}
+  .caption .hot{color:var(--bad); font-weight:600}
+  .caption .ok{color:var(--good); font-weight:600}
+  svg{width:100%; height:auto; display:block; background:var(--panel); border-radius:10px}
+  .controls{display:flex; align-items:center; gap:10px; margin-top:12px}
+  button{
+    font:inherit; font-size:14px; padding:7px 14px; border-radius:7px;
+    border:1px solid var(--grid); background:#fff; color:var(--ink); cursor:pointer;
+  }
+  button:hover{border-color:var(--navy)}
+  button[disabled]{opacity:.4; cursor:default}
+  .bar{flex:1; height:4px; background:var(--grid); border-radius:2px; overflow:hidden}
+  .bar i{display:block; height:100%; width:0; background:var(--navy)}
+  .hint{font-size:12.5px; color:var(--ink-2)}
+  text{font-family:inherit}
+</style>
+</head>
+<body>
+<div class="stage">
+  <header>
+    <h1>Same model but two very different scores</h1>
+    <span class="sub">By only changing where the line was drawn</span>
+  </header>
+
+  <!-- caption changes per scene. it's the mckinsey-style assertion, ie it
+       states the takeaway rather than describing what's on screen -->
+  <p class="caption" id="cap">&nbsp;</p>
+
+  <div class="row">
+    <!-- fixed viewBox so all the x/y numbers in the scenes are stable
+         regardless of how big the window is -->
+    <svg id="viz" viewBox="0 0 1180 500" role="img" aria-label="Animation comparing a random window split with a subject-wise split"></svg>
+    <div class="code"><div class="file" id="cfile">&nbsp;</div><pre id="ccode"></pre></div>
+  </div>
+
+  <div class="controls">
+    <button id="replay">Replay</button>
+    <button id="prev">&larr;</button>
+    <button id="next">&rarr;</button>
+    <button id="pause">Pause</button>
+    <div class="bar"><i id="prog"></i></div>
+    <span class="hint">space = pause &middot; arrows = step</span>
+  </div>
+</div>
+
+<script>
+// tiny helper so we're not typing createElementNS everywhere
+const SVG='http://www.w3.org/2000/svg';
+const viz=document.getElementById('viz'), cap=document.getElementById('cap'), prog=document.getElementById('prog');
+const el=(n,a={})=>{const e=document.createElementNS(SVG,n);for(const k in a)e.setAttribute(k,a[k]);return e};
+
+// legend only, in the order we want it displayed (biggest class first).
+// note this is NOT the same order as config.PAIN_CLASSES, see CLSCOL below
+const CLASSES=[
+  {name:'headache',       n:30, c:'var(--c1)'},
+  {name:'back_pain',      n:28, c:'var(--c2)'},
+  {name:'no_pain',        n:15, c:'var(--c3)'},
+  {name:'menstrual_pain', n:10, c:'var(--c4)'},
+];
+
+
+// Real split, exported by scripts/run_leakage_demo.py.
+// rand = [windows in TRAIN, windows in TEST] under the shuffled split
+// grp  = the same under StratifiedGroupKFold fold 0
+const SPLIT={"n_windows":6465,"n_subjects":83,"classes":["no_pain","headache","back_pain","menstrual_pain"],"subjects":[{"id":"S004","cls":1,"rand":[59,17],"grp":[0,76]},{"id":"S005","cls":1,"rand":[59,17],"grp":[76,0]},{"id":"S006","cls":2,"rand":[62,14],"grp":[76,0]},{"id":"S008","cls":1,"rand":[64,13],"grp":[77,0]},{"id":"S009","cls":1,"rand":[63,14],"grp":[77,0]},{"id":"S010","cls":1,"rand":[58,19],"grp":[0,77]},{"id":"S011","cls":1,"rand":[62,15],"grp":[77,0]},{"id":"S012","cls":0,"rand":[67,14],"grp":[0,81]},{"id":"S013","cls":2,"rand":[57,18],"grp":[75,0]},{"id":"S014","cls":1,"rand":[51,14],"grp":[65,0]},{"id":"S015","cls":0,"rand":[65,15],"grp":[80,0]},{"id":"S016","cls":3,"rand":[63,15],"grp":[78,0]},{"id":"S017","cls":2,"rand":[62,15],"grp":[77,0]},{"id":"S018","cls":2,"rand":[59,18],"grp":[77,0]},{"id":"S019","cls":1,"rand":[64,13],"grp":[77,0]},{"id":"S020","cls":1,"rand":[64,16],"grp":[0,80]},{"id":"S021","cls":1,"rand":[59,21],"grp":[80,0]},{"id":"S022","cls":2,"rand":[64,16],"grp":[0,80]},{"id":"S023","cls":3,"rand":[69,10],"grp":[79,0]},{"id":"S024","cls":1,"rand":[61,17],"grp":[0,78]},{"id":"S025","cls":3,"rand":[56,21],"grp":[77,0]},{"id":"S026","cls":2,"rand":[75,17],"grp":[0,92]},{"id":"S027","cls":1,"rand":[63,13],"grp":[76,0]},{"id":"S028","cls":1,"rand":[61,19],"grp":[80,0]},{"id":"S029","cls":1,"rand":[64,14],"grp":[78,0]},{"id":"S031","cls":0,"rand":[63,16],"grp":[79,0]},{"id":"S032","cls":2,"rand":[69,8],"grp":[77,0]},{"id":"S033","cls":2,"rand":[61,18],"grp":[79,0]},{"id":"S034","cls":1,"rand":[57,21],"grp":[78,0]},{"id":"S035","cls":1,"rand":[62,18],"grp":[80,0]},{"id":"S036","cls":1,"rand":[64,16],"grp":[0,80]},{"id":"S037","cls":1,"rand":[61,16],"grp":[77,0]},{"id":"S038","cls":0,"rand":[57,20],"grp":[77,0]},{"id":"S041","cls":2,"rand":[52,12],"grp":[64,0]},{"id":"S042","cls":2,"rand":[42,12],"grp":[54,0]},{"id":"S044","cls":1,"rand":[64,14],"grp":[78,0]},{"id":"S045","cls":2,"rand":[59,19],"grp":[0,78]},{"id":"S046","cls":0,"rand":[64,15],"grp":[79,0]},{"id":"S047","cls":0,"rand":[64,14],"grp":[78,0]},{"id":"S048","cls":1,"rand":[59,18],"grp":[77,0]},{"id":"S049","cls":0,"rand":[61,16],"grp":[0,77]},{"id":"S052","cls":2,"rand":[67,13],"grp":[80,0]},{"id":"S053","cls":2,"rand":[67,13],"grp":[80,0]},{"id":"S054","cls":0,"rand":[60,17],"grp":[77,0]},{"id":"S055","cls":0,"rand":[66,9],"grp":[0,75]},{"id":"S056","cls":1,"rand":[60,19],"grp":[0,79]},{"id":"S057","cls":3,"rand":[59,21],"grp":[80,0]},{"id":"S058","cls":2,"rand":[70,10],"grp":[80,0]},{"id":"S059","cls":3,"rand":[61,19],"grp":[80,0]},{"id":"S060","cls":2,"rand":[75,14],"grp":[89,0]},{"id":"S062","cls":2,"rand":[66,18],"grp":[84,0]},{"id":"S063","cls":2,"rand":[70,11],"grp":[81,0]},{"id":"S064","cls":1,"rand":[61,19],"grp":[80,0]},{"id":"S066","cls":1,"rand":[58,19],"grp":[77,0]},{"id":"S067","cls":1,"rand":[70,11],"grp":[81,0]},{"id":"S068","cls":1,"rand":[72,15],"grp":[87,0]},{"id":"S069","cls":2,"rand":[58,15],"grp":[0,73]},{"id":"S070","cls":1,"rand":[67,16],"grp":[83,0]},{"id":"S071","cls":3,"rand":[63,14],"grp":[77,0]},{"id":"S072","cls":2,"rand":[33,13],"grp":[46,0]},{"id":"S074","cls":1,"rand":[66,14],"grp":[80,0]},{"id":"S075","cls":3,"rand":[62,15],"grp":[0,77]},{"id":"S077","cls":2,"rand":[66,14],"grp":[80,0]},{"id":"S078","cls":3,"rand":[96,22],"grp":[118,0]},{"id":"S079","cls":1,"rand":[40,17],"grp":[57,0]},{"id":"S082","cls":0,"rand":[67,13],"grp":[80,0]},{"id":"S083","cls":0,"rand":[64,13],"grp":[77,0]},{"id":"S084","cls":0,"rand":[66,11],"grp":[77,0]},{"id":"S085","cls":0,"rand":[55,11],"grp":[66,0]},{"id":"S086","cls":2,"rand":[63,20],"grp":[83,0]},{"id":"S087","cls":0,"rand":[47,18],"grp":[65,0]},{"id":"S088","cls":3,"rand":[75,15],"grp":[90,0]},{"id":"S089","cls":2,"rand":[58,22],"grp":[80,0]},{"id":"S090","cls":2,"rand":[68,12],"grp":[80,0]},{"id":"S091","cls":3,"rand":[55,25],"grp":[0,80]},{"id":"S092","cls":2,"rand":[67,10],"grp":[77,0]},{"id":"S093","cls":0,"rand":[70,11],"grp":[81,0]},{"id":"S094","cls":2,"rand":[62,17],"grp":[79,0]},{"id":"S095","cls":2,"rand":[61,17],"grp":[78,0]},{"id":"S096","cls":2,"rand":[61,17],"grp":[78,0]},{"id":"S097","cls":1,"rand":[60,19],"grp":[79,0]},{"id":"S098","cls":1,"rand":[68,11],"grp":[79,0]},{"id":"S099","cls":2,"rand":[62,15],"grp":[0,77]}]};
+// we can't draw 6465 dots and have anyone see anything, so each drawn dot
+// stands for 14 real windows. the scene says so on screen
+const DOT_PER = 14;
+
+// our own tiny prng instead of Math.random, so every take of the recording
+// looks identical. _s gets reset per scene in show()
+let _s=42; const rnd=()=>{_s=(_s*1103515245+12345)&0x7fffffff; return _s/0x7fffffff};
+
+// python's config.PAIN_CLASSES is [no_pain, headache, back_pain, menstrual],
+// so cls index -> colour has to follow THAT order, not the legend order above
+const CLSCOL=['var(--c3)','var(--c1)','var(--c2)','var(--c4)']; // config.PAIN_CLASSES order
+const people=SPLIT.subjects.map((r,i)=>({
+  id:i, sid:r.id, cls:r.cls, c:CLSCOL[r.cls], rand:r.rand, grp:r.grp,
+}));
+// starting grid every scene animates out of. hx/hy = each person's "home"
+const COLS=12, CELL=44, GX=90, GY=120;
+people.forEach((p,i)=>{ p.hx=GX+(i%COLS)*CELL; p.hy=GY+Math.floor(i/COLS)*CELL; });
+
+// scene = which one we're on, t0 = when it started, raf = the loop handle
+let layer={}, scene=-1, playing=true, t0=0, raf=null;
+
+// wipe and rebuild the svg each frame. three groups so links always draw
+// under dots, and dots under text, without fiddling with z-order
+function frame(){
+  viz.innerHTML='';
+  layer.link=el('g'); layer.dot=el('g'); layer.ui=el('g');
+  viz.append(layer.link,layer.dot,layer.ui);
+}
+
+function label(x,y,txt,o={}){
+  const t=el('text',{x,y,'font-size':o.size||14,fill:o.fill||'var(--ink-2)',
+    'text-anchor':o.anchor||'start','font-weight':o.weight||400});
+  t.textContent=txt; layer.ui.append(t); return t;
+}
+function box(x,y,w,h,stroke){
+  layer.ui.append(el('rect',{x,y,width:w,height:h,rx:9,fill:'none',
+    stroke:stroke||'var(--grid)','stroke-width':1.5,'stroke-dasharray':'5 4'}));
+}
+function dot(p,x,y,r=7,op=1){
+  const c=el('circle',{cx:x,cy:y,r,fill:p.c,opacity:op}); layer.dot.append(c); return c;
+}
+// ease in-out. every scene gets k from 0..1 and shapes its own motion from it
+const ease=t=>t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2;
+
+
+/* one code snippet per scene, copied from the actual repo files.
+   nothing here is pseudocode. the <span> tags are just colouring. */
+const CODE=[
+{f:'src/painnet/data.py', c:
+`<span class="k">def</span> <span class="f">load_raw_eeg</span>(drop_junk=<span class="k">True</span>):
+    <span class="c"># 83 files, one per participant</span>
+    files = <span class="f">sorted</span>(d.glob(<span class="s">"S*.csv"</span>))
+    df = pd.<span class="f">concat</span>([_read_eeg_csv(f) <span class="k">for</span> f <span class="k">in</span> files])
+    <span class="k">return</span> df.<span class="f">drop</span>(columns=config.DROP_COLS)
+
+<span class="c"># every row of one participant carries</span>
+<span class="c"># that participant's single label</span>
+df.<span class="f">groupby</span>(<span class="s">"id"</span>)[<span class="s">"pain_type"</span>].<span class="f">nunique</span>().<span class="f">max</span>()
+<span class="c">#  -> 1</span>`},
+
+{f:'src/painnet/windows.py', c:
+`<span class="k">def</span> <span class="f">make_windows</span>(df, feature_cols, window=<span class="n">60</span>, step=<span class="n">15</span>):
+    X, y, groups = [], [], []
+    <span class="k">for</span> sid, g <span class="k">in</span> df.<span class="f">groupby</span>(<span class="s">"id"</span>, sort=<span class="k">True</span>):
+        arr   = g[feature_cols].<span class="f">to_numpy</span>()
+        label = g[<span class="s">"pain_type"</span>].iloc[<span class="n">0</span>]
+        <span class="k">for</span> start <span class="k">in</span> <span class="f">range</span>(<span class="n">0</span>, <span class="f">len</span>(arr)-window+<span class="n">1</span>, step):
+            X.<span class="f">append</span>(arr[start:start+window])
+            y.<span class="f">append</span>(label)
+            <span class="hlg">groups.<span class="f">append</span>(sid)</span>   <span class="c"># who it came from</span>
+    <span class="k">return</span> np.<span class="f">stack</span>(X), np.<span class="f">asarray</span>(y), np.<span class="f">asarray</span>(groups)
+
+<span class="c"># X (6465, 60, 10)</span>`},
+
+{f:'scripts/run_leakage_demo.py', c:
+`<span class="c"># the leak: shuffle windows, ignore</span>
+<span class="c"># who they came from</span>
+<span class="hl">perm = rng.<span class="f">permutation</span>(<span class="f">len</span>(y_int))</span>
+cut  = <span class="f">int</span>(<span class="n">0.8</span> * <span class="f">len</span>(perm))
+tr, te = perm[:cut], perm[cut:]
+
+shared = <span class="f">len</span>(<span class="f">set</span>(groups[tr]) &amp; <span class="f">set</span>(groups[te]))
+<span class="f">print</span>(shared, <span class="s">"participants on BOTH sides"</span>)
+<span class="c">#  -> 83</span>`},
+
+{f:'scripts/run_leakage_demo.py', c:
+`leaked = <span class="f">train_eval</span>(X[tr], y_int[tr],
+                     X[te], y_int[te])
+
+<span class="c"># same TCN, same hyperparameters</span>
+<span class="c"># accuracy  0.896</span>
+<span class="hl"><span class="c"># macro-F1  0.899</span></span>
+
+<span class="c"># nothing about pain was learned.</span>
+<span class="c"># the model recognises people.</span>`},
+
+{f:'src/painnet/splits.py', c:
+`<span class="k">def</span> <span class="f">subject_folds</span>(groups, y, n_splits=<span class="n">5</span>):
+    splitter = <span class="f">StratifiedGroupKFold</span>(
+        n_splits=n_splits, shuffle=<span class="k">True</span>,
+        random_state=config.SEED)
+
+    <span class="k">for</span> train_idx, test_idx <span class="k">in</span> splitter.<span class="f">split</span>(
+            np.<span class="f">zeros</span>(<span class="f">len</span>(groups)), y, <span class="hlg">groups</span>):
+        <span class="c"># verify what sklearn handed us</span>
+        <span class="hlg"><span class="f">assert_no_subject_leakage</span>(</span>
+            groups[train_idx], groups[test_idx])
+        <span class="k">yield</span> train_idx, test_idx`},
+
+{f:'src/painnet/splits.py', c:
+`<span class="k">def</span> <span class="f">assert_no_subject_leakage</span>(g_train, g_test):
+    tr, te = <span class="f">set</span>(g_train), <span class="f">set</span>(g_test)
+    overlap = tr &amp; te
+    <span class="k">if</span> overlap:
+        <span class="hlg"><span class="k">raise</span> <span class="f">LeakageError</span>(</span>
+            <span class="s">f"{len(overlap)} subject(s) in "</span>
+            <span class="s">"both train and test."</span>)
+
+<span class="c"># macro-F1  0.258</span>`},
+
+{f:'tests/test_splits.py', c:
+`<span class="k">def</span> <span class="f">test_guard_catches_deliberate_leak</span>():
+    <span class="k">with</span> pytest.<span class="f">raises</span>(splits.LeakageError):
+        splits.<span class="f">assert_no_subject_leakage</span>(
+            [<span class="s">"S001"</span>, <span class="s">"S002"</span>], [<span class="s">"S002"</span>, <span class="s">"S003"</span>])
+
+<span class="k">def</span> <span class="f">test_subject_folds_never_leak</span>():
+    <span class="k">for</span> tr, te <span class="k">in</span> splits.<span class="f">subject_folds</span>(groups, y):
+        <span class="k">assert</span> <span class="k">not</span> (<span class="f">set</span>(groups[tr]) &amp; <span class="f">set</span>(groups[te]))
+
+<span class="c"># 8 passed in 1.24s</span>`},
+];
+const cfile=document.getElementById('cfile'), ccode=document.getElementById('ccode');
+
+/* ---------------- scenes ----------------
+   each one is { ms: how long it runs, cap: the caption, draw(k) }
+   where k goes 0 -> 1. draw() is called every frame, so it has to be
+   cheap and it has to be a pure function of k (no accumulating state) */
+const SCENES=[
+{ ms:3200, cap:'Each participant reported one pain type, so every window inherits its label from a person',
+  draw(k){
+    frame();
+    people.forEach((p,i)=>{
+      const appear=Math.min(1,Math.max(0,(k*people.length*1.4)-i));
+      if(appear<=0) return;
+      dot(p,p.hx,p.hy,7*ease(appear),appear);
+    });
+    const shown=Math.min(SPLIT.n_subjects,Math.round(k*1.4*SPLIT.n_subjects));
+    label(90,90,`${shown} participants`,{size:17,fill:'var(--navy)',weight:600});
+    let lx=640; CLASSES.forEach(cl=>{
+      layer.ui.append(el('circle',{cx:lx,cy:85,r:6,fill:cl.c}));
+      label(lx+12,90,`${cl.name} (${cl.n})`,{size:12.5}); lx+=140;
+    });
+  }},
+
+{ ms:3400, cap:'Six thousand windows still come from only 83 people',
+  draw(k){
+    frame();
+    const e=ease(k);
+    people.forEach(p=>{
+      // just decorative here, 6 little dots puffing out of each person
+      for(let w=0;w<6;w++){
+        const a=(w/6)*Math.PI*2 + p.id;
+        const rad=e*16;
+        dot(p,p.hx+Math.cos(a)*rad, p.hy+Math.sin(a)*rad, 3.2, .55);
+      }
+      dot(p,p.hx,p.hy,7*(1-e*.35),1);
+    });
+    label(90,90,`${Math.round(e*SPLIT.n_windows).toLocaleString()} windows`,{size:17,fill:'var(--navy)',weight:600});
+    label(90,470,'…but every window from one person carries that person’s single label',{size:14});
+  }},
+
+{ ms:5200, cap:'Shuffling windows puts all 83 participants on both sides of the split',
+  draw(k){
+    frame();
+    const e=ease(Math.min(1,k*1.5));
+    box(70,120,480,286); box(630,120,480,286);
+    label(310,105,'TRAIN',{anchor:'middle',size:13,weight:600});
+    label(870,105,'TEST',{anchor:'middle',size:13,weight:600});
+
+    // build the two piles from the REAL split. p.rand[0] windows went to
+    // train, p.rand[1] went to test, straight out of run_leakage_demo.py
+    const tr=[], te=[];
+    people.forEach(p=>{
+      for(let i=0;i<Math.max(1,Math.round(p.rand[0]/DOT_PER));i++) tr.push(p);
+      for(let i=0;i<Math.max(1,Math.round(p.rand[1]/DOT_PER));i++) te.push(p);
+    });
+    // a shuffle scatters a person's windows, so scatter them here too
+    const mix=a=>{const b=a.slice(); for(let i=b.length-1;i>0;i--){
+      const j=Math.floor(rnd()*(i+1)); [b[i],b[j]]=[b[j],b[i]];} return b;};
+    _s=7; const trM=mix(tr), teM=mix(te);
+
+    const place=(arr,x0)=>arr.map((p,i)=>({p,
+      x:x0+(i%28)*15.6, y:143+Math.floor(i/28)*15.0}));
+    const A=place(trM,96), B=place(teM,656);
+
+    [...A,...B].forEach(d=>{
+      const x=d.p.hx+(d.x-d.p.hx)*e, y=d.p.hy+(d.y-d.p.hy)*e;
+      dot(d.p,x,y,3.2,.85);
+    });
+
+    if(k>0.55){
+      const lo=Math.min(1,(k-0.55)/0.3);
+      // only 20 links or the panel turns into a solid red block. every one
+      // of the 83 would qualify, which is the point we're making
+      const pick=people.filter((_,i)=>i%4===0).slice(0,20);
+      pick.forEach((p,i)=>{
+        if(i/pick.length>lo) return;
+        const a=A.find(d=>d.p===p), b=B.find(d=>d.p===p);
+        if(!a||!b) return;
+        layer.link.append(el('line',{x1:a.x,y1:a.y,x2:b.x,y2:b.y,
+          stroke:'var(--bad)','stroke-width':1,opacity:.5}));
+      });
+      label(590,430,'red lines join windows from the same participant, 20 of 83 drawn',
+        {anchor:'middle',size:13,fill:'var(--bad)',weight:600});
+    }
+    label(590,456,'each dot is 14 real windows, placed by the actual permutation',
+      {anchor:'middle',size:12,fill:'var(--ink-2)'});
+  }},
+
+{ ms:4200, cap:'The model scores 0.899 by recognising people, not by learning pain',
+  draw(k){
+    frame();
+    const e=ease(k);
+    box(70,120,480,286); box(630,120,480,286);
+    label(310,105,'TRAIN',{anchor:'middle',size:13,weight:600});
+    label(870,105,'TEST',{anchor:'middle',size:13,weight:600});
+    // same real arrangement as the previous scene, faded back
+    const tr=[], te=[];
+    people.forEach(p=>{
+      for(let i=0;i<Math.max(1,Math.round(p.rand[0]/DOT_PER));i++) tr.push(p);
+      for(let i=0;i<Math.max(1,Math.round(p.rand[1]/DOT_PER));i++) te.push(p);
+    });
+    const mix=a=>{const b=a.slice(); for(let i=b.length-1;i>0;i--){
+      const j=Math.floor(rnd()*(i+1)); [b[i],b[j]]=[b[j],b[i]];} return b;};
+    _s=7;
+    mix(tr).forEach((p,i)=>dot(p,96+(i%28)*15.6,143+Math.floor(i/28)*15.0,3.2,.28));
+    mix(te).forEach((p,i)=>dot(p,656+(i%28)*15.6,143+Math.floor(i/28)*15.0,3.2,.28));
+    const v=(0.899*e);
+    label(590,300,v.toFixed(2),{anchor:'middle',size:78,fill:'var(--bad)',weight:700});
+    label(590,340,'macro-F1',{anchor:'middle',size:15,fill:'var(--ink-2)'});
+    if(k>.7) label(590,392,'LEAKED',{anchor:'middle',size:20,fill:'var(--bad)',weight:700});
+  }},
+
+{ ms:5000, cap:'Splitting by participant keeps every person on one side',
+  draw(k){
+    frame();
+    const e=ease(Math.min(1,k*1.4));
+    box(70,120,480,290); box(630,120,480,290);
+    const nTrain=people.filter(p=>p.grp[0]>0).length;
+    const nTest =people.filter(p=>p.grp[1]>0).length;
+    label(310,105,`TRAIN  ·  ${nTrain} people`,{anchor:'middle',size:13,weight:600});
+    label(870,105,`TEST  ·  ${nTest} people`,{anchor:'middle',size:13,weight:600});
+
+    let ti=0, si=0;
+    people.forEach(p=>{
+      const toTest = p.grp[1]>0;          // real fold-0 membership
+      let tx,ty;
+      if(toTest){ tx=690+(si%4)*100; ty=165+Math.floor(si/4)*44; si++; }
+      else      { tx=110+(ti%9)*50;  ty=160+Math.floor(ti/9)*38; ti++; }
+      const x=p.hx+(tx-p.hx)*e, y=p.hy+(ty-p.hy)*e;
+      const n=Math.max(1,Math.round((p.grp[0]+p.grp[1])/26));
+      for(let w=0;w<n;w++){
+        const a=(w/n)*Math.PI*2+p.id;
+        dot(p,x+Math.cos(a)*12,y+Math.sin(a)*12,2.6,.5);
+      }
+      dot(p,x,y,5.5,1);
+    });
+    if(k>.75) label(590,432,'0 participants appear on both sides',
+      {anchor:'middle',size:13,fill:'var(--good)',weight:600});
+    label(590,462,'membership taken from StratifiedGroupKFold fold 0',
+      {anchor:'middle',size:12,fill:'var(--ink-2)'});
+  }},
+
+{ ms:4600, cap:'Facing people it has never seen, the same model scores 0.258',
+  draw(k){
+    frame();
+    const e=ease(k);
+    box(70,120,480,300); box(630,120,480,300);
+    // counts come from the data, not typed in (fold 0 is 67/16, not 66/17)
+    label(310,105,`TRAIN  ·  ${people.filter(p=>p.grp[0]>0).length} people`,{anchor:'middle',size:13,weight:600});
+    label(870,105,`TEST  ·  ${people.filter(p=>p.grp[1]>0).length} people`,{anchor:'middle',size:13,weight:600});
+    let ti=0, si=0;
+    people.forEach(p=>{
+      const toTest=p.grp[1]>0;
+      let x,y;
+      if(toTest){ x=690+(si%4)*100; y=165+Math.floor(si/4)*44; si++; }
+      else      { x=110+(ti%9)*50;  y=160+Math.floor(ti/9)*38; ti++; }
+      dot(p,x,y,5.5,.28);
+    });
+    label(590,296,(0.258*e).toFixed(3),{anchor:'middle',size:78,fill:'var(--navy)',weight:700});
+    label(590,336,'macro-F1',{anchor:'middle',size:15,fill:'var(--ink-2)'});
+    if(k>.65) label(590,390,'SUBJECT-WISE',{anchor:'middle',size:20,fill:'var(--good)',weight:700});
+  }},
+
+{ ms:8000, cap:'The split decided the score, not the model',
+  draw(k){
+    frame();
+    const e=ease(Math.min(1,k*2.2));
+    layer.ui.append(el('rect',{x:70,y:104,width:480,height:172,rx:12,fill:'#fff',
+      stroke:'var(--bad)','stroke-width':2,opacity:e}));
+    label(310,148,'shuffled windows',{anchor:'middle',size:15,fill:'var(--ink-2)'}).setAttribute('opacity',e);
+    label(310,222,'0.899',{anchor:'middle',size:54,fill:'var(--bad)',weight:700}).setAttribute('opacity',e);
+    label(310,258,'it knew the people',{anchor:'middle',size:14,fill:'var(--bad)'}).setAttribute('opacity',e);
+
+    if(k>.16){
+      const o=Math.min(1,(k-.16)/.2);
+      layer.ui.append(el('rect',{x:630,y:104,width:480,height:172,rx:12,fill:'#fff',
+        stroke:'var(--navy)','stroke-width':2,opacity:o}));
+      label(870,148,'split by participant',{anchor:'middle',size:15,fill:'var(--ink-2)'}).setAttribute('opacity',o);
+      label(870,222,'0.258',{anchor:'middle',size:54,fill:'var(--navy)',weight:700}).setAttribute('opacity',o);
+      label(870,258,'it had to generalise',{anchor:'middle',size:14,fill:'var(--good)'}).setAttribute('opacity',o);
+    }
+
+    // the so-what. these fade in one at a time, first one biggest, because
+    // it's the bit that matters outside this project
+    const SO=[
+      'A model that recognises patients is useless on new patients',
+      'So every result we report is grouped by participant',
+      'And we read single-split results on small datasets sceptically',
+    ];
+    SO.forEach((line,i)=>{
+      const t0=.40+i*.17;
+      if(k<=t0) return;
+      const o=Math.min(1,(k-t0)/.13);
+      const y=336+i*44;
+      layer.ui.append(el('circle',{cx:206,cy:y-6,r:5,
+        fill:i===0?'var(--navy)':'var(--ink-2)',opacity:o}));
+      label(228,y,line,{size:i===0?23:19,fill:i===0?'var(--ink)':'var(--ink-2)',
+        weight:i===0?700:400}).setAttribute('opacity',o);
+    });
+  }},
+];
+
+/* ---------------- runner ---------------- */
+// jump to a scene. restart=false lets us redraw a frozen frame without
+// resetting the clock (handy when screenshotting)
+function show(i,restart=true){
+  scene=Math.max(0,Math.min(SCENES.length-1,i));
+  cap.innerHTML=SCENES[scene].cap;
+  if(CODE[scene]){ cfile.textContent=CODE[scene].f; ccode.innerHTML=CODE[scene].c; }
+  _s=42+scene;                      // reset PRNG per scene => stable replays
+  if(restart) t0=performance.now();
+}
+// the loop. note it keeps running even when playing=false: pausing only
+// stops AUTO-ADVANCE to the next scene, so a paused scene plays out and then
+// holds on its last frame. that's what you want when narrating
+function tick(now){
+  const S=SCENES[scene];
+  let k=(now-t0)/S.ms;
+  if(k>=1){
+    k=1;
+    if(playing && scene<SCENES.length-1){ show(scene+1); return raf=requestAnimationFrame(tick); }
+  }
+  S.draw(Math.min(1,k));
+  const done=SCENES.slice(0,scene).reduce((a,s)=>a+s.ms,0)+Math.min(1,k)*S.ms;
+  const all=SCENES.reduce((a,s)=>a+s.ms,0);
+  prog.style.width=(100*done/all)+'%';
+  raf=requestAnimationFrame(tick);
+}
+document.getElementById('next').onclick=()=>{playing=false;pauseBtn.textContent='Play';show(scene+1)};
+document.getElementById('prev').onclick=()=>{playing=false;pauseBtn.textContent='Play';show(scene-1)};
+document.getElementById('replay').onclick=()=>{playing=true;pauseBtn.textContent='Pause';show(0)};
+const pauseBtn=document.getElementById('pause');
+pauseBtn.onclick=()=>{playing=!playing;pauseBtn.textContent=playing?'Pause':'Play';if(playing)show(scene)};
+// space to pause, arrows to step. that's the whole recording workflow
+addEventListener('keydown',e=>{
+  if(e.code==='Space'){e.preventDefault();pauseBtn.click()}
+  if(e.code==='ArrowRight')document.getElementById('next').click();
+  if(e.code==='ArrowLeft')document.getElementById('prev').click();
+});
+show(0); raf=requestAnimationFrame(tick);
+</script>
+</body>
+</html>
