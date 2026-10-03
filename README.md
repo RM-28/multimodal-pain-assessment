@@ -46,9 +46,6 @@ from painnet import config, data, windows, splits, models, evaluate, plots
 print(config.describe())
 ```
 
-While the repository is private, put a GitHub token in a Kaggle secret named
-`GH_TOKEN` and install with `git+https://{token}@github.com/...` instead.
-
 ### Locally
 
 ```bash
